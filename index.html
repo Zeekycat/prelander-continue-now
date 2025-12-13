@@ -148,11 +148,6 @@
     </div>
 
     <script>
-      const getQueryParam = (name) => {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get(name);
-      };
-
       const isAndroid = () => {
         return /Android/i.test(navigator.userAgent);
       };
@@ -178,19 +173,25 @@
         }
       };
 
-      const DEFAULT_REDIRECT_URL = "https://frostedwinter.com/?utm_source=subid";
-
       function handleContinue() {
-        let finalRedirectUrl = DEFAULT_REDIRECT_URL;
+        // Get all URL parameters from the current page
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Your button's base URL (can be different each time)
+        const baseButtonUrl = 'https://frostedwinter.com/?utm_source=subid';
+        
+        // Parse the base URL to get its existing parameters
+        const buttonUrlObj = new URL(baseButtonUrl);
+        
+        // Add/override with all parameters from the current page URL
+        urlParams.forEach((value, key) => {
+          buttonUrlObj.searchParams.set(key, value);
+        });
+        
+        // Get the final URL
+        const finalRedirectUrl = buttonUrlObj.toString();
 
-        const utmSource = getQueryParam("utm_source");
-        if (utmSource) {
-          finalRedirectUrl = finalRedirectUrl.replace(
-            "utm_source=subid",
-            "utm_source=" + encodeURIComponent(utmSource)
-          );
-        }
-
+        // Format as deep link for mobile
         let finalBreakoutUrl = finalRedirectUrl;
 
         if (isAndroid()) {
