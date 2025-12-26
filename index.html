@@ -110,6 +110,11 @@
         box-shadow: 0 2px 10px rgba(74, 144, 226, 0.3);
       }
 
+      .cta-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
       @media (max-width: 480px) {
         .cta-button {
           font-size: 16px;
@@ -148,6 +153,8 @@
     </div>
 
     <script>
+      let redirectAttempted = false;
+
       const isAndroid = () => {
         return /Android/i.test(navigator.userAgent);
       };
@@ -159,8 +166,10 @@
           const pathAndParams = urlObj.pathname + urlObj.search + urlObj.hash;
 
           if (osType === "a") {
+            // Improved Android intent with package and fallback
             const intentScheme = "intent://";
-            const intentEnd = "#Intent;scheme=https;end;";
+            const intentEnd = "#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + 
+                            encodeURIComponent(url) + ";end;";
             return intentScheme + hostname + pathAndParams + intentEnd;
           } else {
             const safariPrefix = "x-safari-https://";
@@ -169,15 +178,56 @@
               .replace(/^http:\/\//, safariPrefix.replace("s", ""));
           }
         } catch (e) {
+          console.error('Deep link formatting error:', e);
           return url;
         }
       };
 
+      function attemptRedirect(url, isDeepLink = false) {
+        if (redirectAttempted) return;
+        
+        try {
+          window.location.href = url;
+          redirectAttempted = true;
+          
+          // If this is a deep link attempt, set up fallback
+          if (isDeepLink) {
+            // If we're still here after 1.5 seconds, the deep link failed
+            setTimeout(() => {
+              if (!document.hidden) {
+                // Page is still visible, deep link didn't work
+                // Try regular HTTPS redirect
+                const regularUrl = url.replace(/^intent:\/\//, 'https://')
+                                      .replace(/#Intent.*$/, '')
+                                      .replace(/^x-safari-https:\/\//, 'https://');
+                window.location.href = regularUrl;
+              }
+            }, 1500);
+          }
+        } catch (e) {
+          console.error('Redirect error:', e);
+          // Fallback to regular URL on error
+          if (isDeepLink) {
+            const regularUrl = url.replace(/^intent:\/\//, 'https://')
+                                  .replace(/#Intent.*$/, '')
+                                  .replace(/^x-safari-https:\/\//, 'https://');
+            window.location.href = regularUrl;
+          }
+        }
+      }
+
       function handleContinue() {
+        // Prevent double-clicks
+        if (redirectAttempted) return;
+        
+        // Disable button
+        const button = event.target;
+        button.disabled = true;
+
         // Get all URL parameters from the current page
         const urlParams = new URLSearchParams(window.location.search);
         
-        // Your button's base URL (can be different each time)
+        // Your button's base URL
         const baseButtonUrl = 'https://frostedwinter.com/?utm_source=subid';
         
         // Parse the base URL to get its existing parameters
@@ -191,17 +241,34 @@
         // Get the final URL
         const finalRedirectUrl = buttonUrlObj.toString();
 
-        // Format as deep link for mobile
-        let finalBreakoutUrl = finalRedirectUrl;
+        // Small delay to ensure click registers on mobile
+        setTimeout(() => {
+          // Format as deep link for mobile
+          let finalBreakoutUrl = finalRedirectUrl;
 
-        if (isAndroid()) {
-          finalBreakoutUrl = formatDeepLink(finalRedirectUrl, "a");
-        } else {
-          finalBreakoutUrl = formatDeepLink(finalRedirectUrl, "i");
-        }
-
-        window.location.href = finalBreakoutUrl;
+          if (isAndroid()) {
+            finalBreakoutUrl = formatDeepLink(finalRedirectUrl, "a");
+            attemptRedirect(finalBreakoutUrl, true);
+          } else {
+            finalBreakoutUrl = formatDeepLink(finalRedirectUrl, "i");
+            attemptRedirect(finalBreakoutUrl, true);
+          }
+        }, 100);
       }
+
+      // Detect if user returns to page (deep link failed)
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && redirectAttempted) {
+          // User came back, try regular redirect as final fallback
+          const urlParams = new URLSearchParams(window.location.search);
+          const baseButtonUrl = 'https://frostedwinter.com/?utm_source=subid';
+          const buttonUrlObj = new URL(baseButtonUrl);
+          urlParams.forEach((value, key) => {
+            buttonUrlObj.searchParams.set(key, value);
+          });
+          window.location.href = buttonUrlObj.toString();
+        }
+      });
     </script>
 </body>
 </html>
